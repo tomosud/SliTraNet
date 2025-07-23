@@ -34,7 +34,16 @@ if not exist requirements.txt (
     pause
     exit /b 1
 )
-pip install -r requirements.txt
+
+echo Uninstalling existing PyTorch (if any)...
+pip uninstall -y torch torchvision torchaudio
+
+echo Installing CUDA-enabled PyTorch...
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+echo Installing other dependencies...
+pip install opencv-contrib-python-headless numpy decord
+
 if errorlevel 1 (
     echo Error: Failed to install packages
     echo Please check your internet connection and try again

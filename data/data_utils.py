@@ -21,10 +21,34 @@ def is_text_file(filename):
 def is_video_file(filename):
     return any(filename.endswith(extension) for extension in [".mp4", ".m4v", ".mov", ".avi"])
 
-def crop_frame(frame, x1, y1, x2, y2):
+def crop_frame(frame, x1, y1, width_or_x2, height_or_y2):
+    """
+    フレームをクロップする
+    width_or_x2, height_or_y2は幅・高さまたはx2, y2座標を受け取る
+    幅・高さの場合はx2=x1+width, y2=y1+heightに変換
+    """
+    # 幅・高さとして渡された場合（通常width > x1, height > y1）
+    if width_or_x2 > frame.shape[1] or height_or_y2 > frame.shape[0]:
+        # 座標として解釈
+        x2, y2 = width_or_x2, height_or_y2
+    else:
+        # 幅・高さとして解釈
+        x2, y2 = x1 + width_or_x2, y1 + height_or_y2
+    
     return frame[y1:y2, x1:x2]
 
-def crop_frames(frames, x1, y1, x2, y2):
+def crop_frames(frames, x1, y1, width_or_x2, height_or_y2):
+    """
+    複数フレームをクロップする
+    """
+    # 幅・高さとして渡された場合
+    if width_or_x2 > frames.shape[2] or height_or_y2 > frames.shape[1]:
+        # 座標として解釈
+        x2, y2 = width_or_x2, height_or_y2
+    else:
+        # 幅・高さとして解釈
+        x2, y2 = x1 + width_or_x2, y1 + height_or_y2
+    
     return frames[:,y1:y2, x1:x2] 
 
 def determine_load_size_roi(videofile, rois, patch_size, full_size=False):
@@ -77,11 +101,11 @@ def read_pred_slide_ids_from_file(file):
     frame_ids_2 = []
     for line in f:
         line_split = line.split(", ")
-        slide_id = int(np.float(line_split[0]))
+        slide_id = int(float(line_split[0]))
         slide_ids.append(slide_id)        
-        frame_id_1 = int(np.float(line_split[1]))
+        frame_id_1 = int(float(line_split[1]))
         frame_ids_1.append(frame_id_1)
-        frame_id_2 = int(np.float(line_split[2]))
+        frame_id_2 = int(float(line_split[2]))
         frame_ids_2.append(frame_id_2)          
     f.close()   
     return np.array(slide_ids), np.array(frame_ids_1), np.array(frame_ids_2)

@@ -115,8 +115,26 @@ class VideoClipTestDataset(data.Dataset):
         scaling_factor = self.patch_size / img_max_size
         if scaling_factor != 1:            
             for i,img in enumerate(frames):
-                img = cv2.resize(img, (round(img.shape[1] * scaling_factor), round(img.shape[0] * scaling_factor)), interpolation = cv2.INTER_NEAREST)
-                H,W,C = img.shape
+                # Convert tensor to numpy array for OpenCV
+                if hasattr(img, 'numpy'):
+                    img_np = img.numpy()
+                else:
+                    img_np = img
+                    
+                img = cv2.resize(img_np, (round(img.shape[1] * scaling_factor), round(img.shape[0] * scaling_factor)), interpolation = cv2.INTER_NEAREST)
+                
+                # Convert back to tensor if needed
+                if hasattr(torch, 'from_numpy'):
+                    img = torch.from_numpy(img)
+                
+                # Handle different image shapes (2D grayscale or 3D color)
+                if len(img.shape) == 2:  # Grayscale: (H, W)
+                    H, W = img.shape
+                    C = 1
+                    img = img.unsqueeze(2)  # Add channel dimension
+                else:  # Color or already has channel: (H, W, C)
+                    H, W, C = img.shape
+                
                 imgs[i,:H,:W,:C] = img
         else:
             N,H,W,C = frames.shape

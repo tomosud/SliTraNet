@@ -1,10 +1,14 @@
 === SliTraNet 推論開始 ===
-使用デバイス: cpu
-警告: GPUが使用できません。CPUで実行するため処理が非常に遅くなる可能性があります。
+ROI設定: 左上(0.23, 0.13) 右下(0.97, 0.88)
+使用デバイス: cuda
 動画ファイル: D:\Work\cedec\「モンスターハンターワイルズ」のメッシュレットの描画パイプライン.mp4
 結果出力先: D:\Work\cedec\「モンスターハンターワイルズ」のメッシュレットの描画パイプライン_results
 動画解像度: 960x540
+ROI設定: [220, 70, 711, 405] (x=220-931, y=70-475)
 処理解像度: 256x144
 モデルを読み込んでいます...
-エラー: モデルの読み込みに失敗しました: Attempting to deserialize object on a CUDA device but torch.cuda.is_available() is False. If you are running on a CPU-only machine, please use torch.load with map_location=torch.device('cpu') to map your storages to the CPU.
-=== 推論失敗 ===
+Stage 1 モデル読み込み完了
+Stage 2 モデル読み込み完了
+Stage 3 モデル読み込み完了
+推論を開始します...
+Stage 1: 初期スライド遷移候補を検出中...

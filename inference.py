@@ -11,6 +11,8 @@ import sys
 import random
 import argparse
 import numpy as np
+import subprocess
+import json
 
 import torch
 import torch.nn as nn
@@ -66,14 +68,48 @@ def get_default_config():
     return DefaultConfig()
 
 
-def create_simple_roi(video_path, patch_size):
-    """バウンディングボックス情報なしで全画面を対象とするROI設定"""
-    vr = VideoReader(video_path)
-    frame = vr[0]
-    H, W, _ = frame.shape
+def get_video_resolution_ffmpeg(video_path):
+    """ffmpegを使用して動画解像度を取得"""
+    try:
+        cmd = [
+            'ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_streams',
+            video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        
+        for stream in data['streams']:
+            if stream['codec_type'] == 'video':
+                return stream['width'], stream['height']
+        
+        raise ValueError("Video stream not found")
+    except Exception as e:
+        printLog(f"ffmpegでの解像度取得に失敗: {e}")
+        # フォールバック: decordを使用
+        vr = VideoReader(video_path)
+        frame = vr[0]
+        H, W, _ = frame.shape
+        return W, H
+
+
+def create_roi_from_normalized(video_path, patch_size, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.0)):
+    """正規化座標からROIを作成"""
+    # 動画解像度取得
+    W, H = get_video_resolution_ffmpeg(video_path)
+    printLog(f"動画解像度: {W}x{H}")
     
-    # 全画面をROIとして設定
-    roi = np.array([0, 0, W, H], dtype=np.int32)
+    # 正規化座標をピクセル座標に変換
+    x1 = int(roi_left_top[0] * W)
+    y1 = int(roi_left_top[1] * H)
+    x2 = int(roi_right_bottom[0] * W)
+    y2 = int(roi_right_bottom[1] * H)
+    
+    # AABB形式 [x, y, width, height]
+    roi_width = x2 - x1
+    roi_height = y2 - y1
+    roi = np.array([x1, y1, roi_width, roi_height], dtype=np.int32)
+    
+    printLog(f"ROI設定: [{x1}, {y1}, {roi_width}, {roi_height}] (x={x1}-{x2}, y={y1}-{y2})")
     
     # パッチサイズに合わせてリサイズ比率を計算
     scaling_factor = patch_size / max(H, W)
@@ -87,7 +123,7 @@ def create_simple_roi(video_path, patch_size):
     return roi, scaled_roi, load_size, load_size
 
 
-def run_inference(video_path):
+def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.0)):
     """推論実行メイン関数"""
     # GPU使用可能かチェック
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -118,10 +154,11 @@ def run_inference(video_path):
     printLog(f"動画ファイル: {video_path}")
     printLog(f"結果出力先: {pred_dir}")
     
-    # ROI設定（全画面対象）
+    # ROI設定
     try:
-        roi, scaled_roi, load_size_roi, load_size_full = create_simple_roi(video_path, opt.patch_size)
-        printLog(f"動画解像度: {roi[2]}x{roi[3]}")
+        roi, scaled_roi, load_size_roi, load_size_full = create_roi_from_normalized(
+            video_path, opt.patch_size, roi_left_top, roi_right_bottom
+        )
         printLog(f"処理解像度: {load_size_roi[1]}x{load_size_roi[0]}")
     except Exception as e:
         printLog(f"エラー: 動画の読み込みに失敗しました: {e}")
@@ -301,21 +338,39 @@ def run_inference(video_path):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("使用方法: python inference.py <video_file>")
-        print("例: python inference.py sample_video.mp4")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='SliTraNet 推論スクリプト')
+    parser.add_argument('video_file', help='動画ファイルのパス')
+    parser.add_argument('--roi-left-top', type=float, nargs=2, default=[0.23, 0.13],
+                        help='ROI左上座標 (正規化座標 0.0-1.0) 例: --roi-left-top 0.23 0.13')
+    parser.add_argument('--roi-right-bottom', type=float, nargs=2, default=[0.97, 0.88],
+                        help='ROI右下座標 (正規化座標 0.0-1.0) 例: --roi-right-bottom 0.97 0.88')
     
-    video_path = sys.argv[1]
+    args = parser.parse_args()
+    
+    video_path = args.video_file
+    roi_left_top = tuple(args.roi_left_top)
+    roi_right_bottom = tuple(args.roi_right_bottom)
+    
+    # ROI座標の妥当性チェック
+    if not (0.0 <= roi_left_top[0] <= 1.0 and 0.0 <= roi_left_top[1] <= 1.0):
+        print("エラー: ROI左上座標は0.0-1.0の範囲で指定してください")
+        sys.exit(1)
+    if not (0.0 <= roi_right_bottom[0] <= 1.0 and 0.0 <= roi_right_bottom[1] <= 1.0):
+        print("エラー: ROI右下座標は0.0-1.0の範囲で指定してください")
+        sys.exit(1)
+    if roi_left_top[0] >= roi_right_bottom[0] or roi_left_top[1] >= roi_right_bottom[1]:
+        print("エラー: ROI座標が不正です（左上 < 右下である必要があります）")
+        sys.exit(1)
     
     # ログファイル初期化
     if os.path.exists('inference.log'):
         os.remove('inference.log')
     
     printLog("=== SliTraNet 推論開始 ===")
+    printLog(f"ROI設定: 左上{roi_left_top} 右下{roi_right_bottom}")
     
     # 推論実行
-    success = run_inference(video_path)
+    success = run_inference(video_path, roi_left_top, roi_right_bottom)
     
     if success:
         printLog("=== 推論完了 ===")

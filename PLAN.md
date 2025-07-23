@@ -67,11 +67,66 @@ SliTraNetは講義動画のスライド遷移を自動検出するCNNベース�
 - ✅ 環境セットアップスクリプト（setup.bat）
 - ✅ 推論実行スクリプト（inference.py）
 - ✅ 実行用バッチファイル（run_inference.bat）
-- ✅ 全画面対象の自動推論
-- ✅ GPU/CPU自動選択
+- ✅ GPU/CPU自動選択とCUDA対応
+- ✅ ROI（Region of Interest）指定機能
 - ✅ エラーハンドリングとログ出力
+- ✅ 互換性修正（numpy.float廃止対応、OpenCV tensor変換）
 
-## リスク・制約
-- CUDA環境が必要（GPUなしでも動作するがCPUのみでは非常に遅い）
-- 大容量動画ファイルの場合、メモリ不足の可能性
-- decordライブラリの動画コーデック対応範囲に依存
+## 最新の機能追加・修正
+
+### ROI指定機能
+- **目的**: 講演動画で演者の動きを除外し、スライド部分のみを検出対象にする
+- **実装**: 正規化座標(0.0-1.0)でAABB指定
+- **デフォルト設定**: 左上(0.23, 0.13) 右下(0.97, 0.88)
+- **使用方法**: 
+  ```bash
+  python inference.py video.mp4 --roi-left-top 0.23 0.13 --roi-right-bottom 0.97 0.88
+  ```
+- **解像度取得**: ffmpegを使用して動画解像度を正確に取得
+
+### CUDA対応強化
+- **requirements.txt**: CUDA 12.4版PyTorchに対応（CUDA 12.9環境で動作確認済み）
+- **setup.bat**: CPU版PyTorchを強制アンインストールしてGPU版を再インストール
+- **model.py**: CPU/GPU環境の自動判定とmap_location設定
+
+### 互換性修正
+- **numpy.float廃止**: `data/data_utils.py`で`np.float` → `float`に修正
+- **OpenCV tensor変換**: `test_slide_detection_2d.py`でPyTorchテンサーをnumpy配列に変換
+- **crop_frame関数**: 幅・高さ形式と座標形式の両方に対応
+
+## トラブルシューティング
+
+### よくある問題と解決方法
+1. **"ModuleNotFoundError: No module named 'numpy'"**
+   - 解決: `setup.bat`を再実行してvenv環境を再構築
+   
+2. **"Torch not compiled with CUDA enabled"**
+   - 解決: requirements.txtのCUDAバージョンを確認し、setup.batを再実行
+   
+3. **"OpenCV resize error"**
+   - 解決: PyTorchテンサーとnumpy配列の変換処理を確認（修正済み）
+
+4. **検出される遷移が多すぎる（800+件など）**
+   - 解決: ROI指定でスライド部分のみを対象にする（デフォルト設定済み）
+
+## システム要件・制約
+- **CUDA環境**: GPU使用推奨（CPUでも動作するが非常に遅い）
+- **ffmpeg**: 動画解像度取得に使用（システムPATHに設定必要）
+- **メモリ**: 大容量動画の場合、GPU/システムメモリ不足の可能性
+- **動画形式**: .mp4, .avi, .mov, .m4v（decordライブラリ依存）
+
+## ファイル構成
+```
+SliTraNet/
+├── setup.bat              # 環境構築スクリプト
+├── run_inference.bat       # 推論実行バッチ
+├── inference.py            # メイン推論スクリプト（ROI対応）
+├── model.py               # モデル定義・読み込み（CUDA対応）
+├── requirements.txt        # 依存関係（CUDA版PyTorch）
+├── data/
+│   ├── data_utils.py      # データ処理ユーティリティ（互換性修正済み）
+│   └── test_video_clip_dataset.py
+├── backbones/             # CNN バックボーン
+├── weights/               # 事前訓練済みモデル
+└── PLAN.md               # このファイル
+```

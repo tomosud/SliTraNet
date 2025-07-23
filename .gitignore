@@ -1,5 +1,5 @@
 /weights
 /venv
 /__pycache__
-/backbones
 /data/__pycache__
+/backbones/__pycache__

@@ -66,11 +66,34 @@ def detect_initial_slide_transition_candidates_resnet2d(net, videofile, base, ro
         img_max_size = max(frame.shape[0], frame.shape[1])
         scaling_factor = opt.patch_size / img_max_size
         if scaling_factor != 1:            
-            frame = cv2.resize(frame, (round(frame.shape[1] * scaling_factor), round(frame.shape[0] * scaling_factor)), interpolation = cv2.INTER_NEAREST)
-            H,W,C = frame.shape
+            # Convert tensor to numpy array for OpenCV
+            if hasattr(frame, 'numpy'):
+                frame_np = frame.numpy()
+            else:
+                frame_np = frame
+            frame = cv2.resize(frame_np, (round(frame.shape[1] * scaling_factor), round(frame.shape[0] * scaling_factor)), interpolation = cv2.INTER_NEAREST)
+            # Convert back to tensor if needed
+            if hasattr(torch, 'from_numpy'):
+                frame = torch.from_numpy(frame)
+            
+            # Handle different frame shapes (2D grayscale or 3D color)
+            if len(frame.shape) == 2:  # Grayscale: (H, W)
+                H, W = frame.shape
+                C = 1
+                frame = frame.unsqueeze(2)  # Add channel dimension
+            else:  # Color or already has channel: (H, W, C)
+                H, W, C = frame.shape
+            
             imgs[1,:H,:W,:C] = frame
         else:
-            H,W,C = frame.shape
+            # Handle different frame shapes (2D grayscale or 3D color)
+            if len(frame.shape) == 2:  # Grayscale: (H, W)
+                H, W = frame.shape
+                C = 1
+                frame = frame.unsqueeze(2)  # Add channel dimension
+            else:  # Color or already has channel: (H, W, C)
+                H, W, C = frame.shape
+            
             imgs[1,:H,:W,:C] = frame
         
         #set anchor
