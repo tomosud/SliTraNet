@@ -1,47 +1,47 @@
 @echo off
 echo ===========================================
-echo    SliTraNet 環境セットアップ
+echo    SliTraNet Environment Setup
 echo ===========================================
 echo.
 
-echo 仮想環境を作成しています...
+echo Creating virtual environment...
 python -m venv venv
 if errorlevel 1 (
-    echo エラー: 仮想環境の作成に失敗しました
-    echo Python 3.x がインストールされていることを確認してください
+    echo Error: Failed to create virtual environment
+    echo Please make sure Python 3.x is installed
     pause
     exit /b 1
 )
 
 echo.
-echo 仮想環境をアクティベートしています...
+echo Activating virtual environment...
 call venv\Scripts\activate.bat
 if errorlevel 1 (
-    echo エラー: 仮想環境のアクティベートに失敗しました
+    echo Error: Failed to activate virtual environment
     pause
     exit /b 1
 )
 
 echo.
-echo 依存パッケージをインストールしています...
+echo Installing packages...
 pip install --upgrade pip
 pip install -r requirements.txt
 if errorlevel 1 (
-    echo エラー: パッケージのインストールに失敗しました
+    echo Error: Failed to install packages
     pause
     exit /b 1
 )
 
 echo.
 echo ===========================================
-echo    セットアップ完了！
+echo    Setup Complete!
 echo ===========================================
 echo.
-echo 使用方法:
-echo   1. 動画ファイルを用意します
-echo   2. run_inference.bat を実行します
-echo   3. 動画ファイルのパスを引数として渡します
+echo Usage:
+echo   1. Prepare video file
+echo   2. Run run_inference.bat
+echo   3. Pass video file path as argument
 echo.
-echo 例: run_inference.bat "C:\path\to\video.mp4"
+echo Example: run_inference.bat "C:\path\to\video.mp4"
 echo.
 pause
