@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ===========================================
-echo    Frame Extraction Tool
+echo    Middle Frame Extraction Tool
 echo ===========================================
 echo.
 
@@ -21,9 +21,11 @@ if "%~2"=="" (
     echo.
     echo Usage:
     echo   1. Drag and drop 2 files to this bat file:
-    echo      - transitions.txt
+    echo      - transitions.txt or results.txt
     echo      - video file ^(.mp4^)
     echo   2. Files can be dropped in any order
+    echo   3. Extracts middle frame from long slides ^(30+ frame difference^)
+    echo   4. Output includes timestamps based on video frame rate
     echo.
     pause
     exit /b 1
@@ -50,29 +52,41 @@ REM Identify file types
 set "TRANSITIONS_FILE="
 set "VIDEO_FILE="
 
+REM Check for transitions.txt or results.txt in file 1
 echo "%~1" | find /i "transitions.txt" >nul
 if !errorlevel! equ 0 (
     set "TRANSITIONS_FILE=%~1"
 ) else (
-    echo "%~1" | find /i ".mp4" >nul
+    echo "%~1" | find /i "results.txt" >nul
     if !errorlevel! equ 0 (
-        set "VIDEO_FILE=%~1"
+        set "TRANSITIONS_FILE=%~1"
+    ) else (
+        echo "%~1" | find /i ".mp4" >nul
+        if !errorlevel! equ 0 (
+            set "VIDEO_FILE=%~1"
+        )
     )
 )
 
+REM Check for transitions.txt or results.txt in file 2  
 echo "%~2" | find /i "transitions.txt" >nul
 if !errorlevel! equ 0 (
     set "TRANSITIONS_FILE=%~2"
 ) else (
-    echo "%~2" | find /i ".mp4" >nul
+    echo "%~2" | find /i "results.txt" >nul
     if !errorlevel! equ 0 (
-        set "VIDEO_FILE=%~2"
+        set "TRANSITIONS_FILE=%~2"
+    ) else (
+        echo "%~2" | find /i ".mp4" >nul
+        if !errorlevel! equ 0 (
+            set "VIDEO_FILE=%~2"
+        )
     )
 )
 
 REM Validate required files
 if "!TRANSITIONS_FILE!"=="" (
-    echo Error: transitions.txt file not found
+    echo Error: transitions.txt or results.txt file not found
     echo Dropped files:
     echo   1: %~1
     echo   2: %~2
@@ -134,8 +148,9 @@ REM Set environment for character encoding
 set PYTHONIOENCODING=utf-8
 
 REM Run frame extraction
-echo Starting frame extraction...
-echo Note: This may take some time depending on video size
+echo Starting middle frame extraction...
+echo Note: Extracting middle frame from slides with 30+ frame difference
+echo Processing time depends on video size and number of valid slides
 echo.
 
 python extract_frames.py "!TRANSITIONS_FILE!" "!VIDEO_FILE!"
@@ -145,11 +160,12 @@ REM Display results
 echo.
 if !extraction_result! equ 0 (
     echo ===========================================
-    echo    Extraction Complete!
+    echo    Middle Frame Extraction Complete!
     echo ===========================================
     echo.
     for %%i in ("!TRANSITIONS_FILE!") do set "OUTPUT_DIR=%%~dpi"
-    echo Results saved to: !OUTPUT_DIR!
+    echo Results saved to: !OUTPUT_DIR!\extracted_frames_[timestamp]
+    echo Middle frames include timestamp information based on video FPS
     echo.
 ) else (
     echo ===========================================
@@ -157,6 +173,10 @@ if !extraction_result! equ 0 (
     echo ===========================================
     echo.
     echo Please check the error messages above
+    echo Possible causes:
+    echo   - No slides with 30+ frame difference found
+    echo   - Video file format not supported
+    echo   - ffmpeg/ffprobe not available
     echo.
 )
 
