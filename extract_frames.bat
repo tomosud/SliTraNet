@@ -148,8 +148,8 @@ REM Set environment for character encoding
 set PYTHONIOENCODING=utf-8
 
 REM Run frame extraction
-echo Starting middle frame extraction...
-echo Note: Extracting middle frame from slides with 30+ frame difference
+echo Starting batch middle frame extraction...
+echo Note: Extracting middle frames in batches of 10 for optimal performance
 echo Processing time depends on video size and number of valid slides
 echo.
 
@@ -164,8 +164,9 @@ if !extraction_result! equ 0 (
     echo ===========================================
     echo.
     for %%i in ("!TRANSITIONS_FILE!") do set "OUTPUT_DIR=%%~dpi"
-    echo Results saved to: !OUTPUT_DIR!\extracted_frames_[timestamp]
-    echo Middle frames include timestamp information based on video FPS
+    echo Results saved to: !OUTPUT_DIR!\extracted_frames
+    echo Middle frames extracted in batches for optimal performance
+    echo Files include timestamp information based on video FPS
     echo.
 ) else (
     echo ===========================================

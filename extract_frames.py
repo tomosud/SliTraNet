@@ -115,48 +115,78 @@ def calculate_middle_frames(frame_data):
     return middle_frames
 
 
-def extract_single_frame_with_ffmpeg(video_file, slide_info, output_dir, fps):
-    """ffmpegを使って中間フレーム1枚を高速抽出"""
-    slide_no = slide_info['slide_no']
-    middle_frame = slide_info['middle_frame']
-    start_frame = slide_info['start_frame']
-    end_frame = slide_info['end_frame']
+def extract_frames_in_batches(video_file, middle_frames, output_dir, fps, batch_size=10):
+    """10個ずつバッチ処理で高速抽出"""
+    total_success = 0
+    total_batches = (len(middle_frames) + batch_size - 1) // batch_size
     
-    print(f"Extracting slide {slide_no}: middle frame {middle_frame} (between {start_frame}-{end_frame})")
-    
-    # タイムスタンプを計算
-    timestamp = frame_to_timestamp(middle_frame, fps)
-    
-    # 出力ファイル名（タイムスタンプ付き）
-    output_filename = f"slide_{slide_no:03d}_frame_{middle_frame:06d}_{timestamp}.png"
-    output_path = os.path.join(output_dir, output_filename)
-    
-    # 1フレームのみをselectフィルターで抽出（高速化）
-    select_filter = f"select='eq(n,{middle_frame})'"
-    
-    cmd = [
-        'ffmpeg',
-        '-i', video_file,
-        '-vf', select_filter,
-        '-vframes', '1',  # 1フレームのみ
-        '-y',  # 上書き確認なし
-        output_path
-    ]
-    
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, 
-                              encoding='utf-8', errors='replace')
+    for batch_idx in range(0, len(middle_frames), batch_size):
+        batch = middle_frames[batch_idx:batch_idx+batch_size]
+        batch_num = batch_idx // batch_size + 1
         
-        if result.returncode == 0:
-            print(f"Successfully extracted frame {middle_frame} -> {output_filename}")
-            return 1
-        else:
-            print(f"Error extracting frame {middle_frame}: {result.stderr}")
-            return 0
+        print(f"\nProcessing batch {batch_num}/{total_batches}: frames {batch_idx+1}-{min(batch_idx+batch_size, len(middle_frames))}")
+        
+        # select式を構築（複数フレーム指定）
+        select_parts = [f"eq(n\\,{info['middle_frame']})" for info in batch]
+        select_expr = '+'.join(select_parts)
+        
+        # 一時ファイルパターン
+        temp_pattern = os.path.join(output_dir, f"batch_{batch_num:03d}_frame_%03d.png")
+        
+        cmd = [
+            'ffmpeg',
+            '-i', video_file,
+            '-vf', f"select='{select_expr}'",
+            '-vsync', '0',  # フレーム番号維持
+            '-y',  # 上書き確認なし
+            temp_pattern
+        ]
+        
+        try:
+            # バッチ実行
+            result = subprocess.run(cmd, capture_output=True, text=True, 
+                                  encoding='utf-8', errors='replace')
             
-    except Exception as e:
-        print(f"Exception during ffmpeg execution for slide {slide_no}: {e}")
-        return 0
+            if result.returncode == 0:
+                # 一時ファイルをタイムスタンプ付きでリネーム
+                batch_success = 0
+                for i, slide_info in enumerate(batch):
+                    temp_file = os.path.join(output_dir, f"batch_{batch_num:03d}_frame_{i+1:03d}.png")
+                    
+                    if os.path.exists(temp_file):
+                        # タイムスタンプ付きファイル名を生成
+                        slide_no = slide_info['slide_no']
+                        middle_frame = slide_info['middle_frame']
+                        timestamp = frame_to_timestamp(middle_frame, fps)
+                        final_filename = f"slide_{slide_no:03d}_frame_{middle_frame:06d}_{timestamp}.png"
+                        final_path = os.path.join(output_dir, final_filename)
+                        
+                        try:
+                            os.rename(temp_file, final_path)
+                            print(f"  ✓ Slide {slide_no}: frame {middle_frame} -> {final_filename}")
+                            batch_success += 1
+                        except Exception as e:
+                            print(f"  ✗ Error renaming {temp_file}: {e}")
+                            # 一時ファイルを削除
+                            try:
+                                os.remove(temp_file)
+                            except:
+                                pass
+                    else:
+                        slide_no = slide_info['slide_no']
+                        middle_frame = slide_info['middle_frame']
+                        print(f"  ✗ Slide {slide_no}: frame {middle_frame} not found in batch output")
+                
+                total_success += batch_success
+                print(f"  Batch {batch_num} completed: {batch_success}/{len(batch)} frames extracted")
+                
+            else:
+                print(f"  ✗ Batch {batch_num} failed: {result.stderr}")
+                
+        except Exception as e:
+            print(f"  ✗ Exception in batch {batch_num}: {e}")
+    
+    return total_success
 
 
 def main():
@@ -217,19 +247,14 @@ def main():
     
     # 出力ディレクトリ（transitions.txtと同じフォルダにextracted_framesサブフォルダ）
     base_output_dir = os.path.dirname(transitions_file)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(base_output_dir, f"extracted_frames_{timestamp}")
+    output_dir = os.path.join(base_output_dir, "extracted_frames")
     os.makedirs(output_dir, exist_ok=True)
     
     print(f"\nOutput directory: {output_dir}")
     
-    # 各スライドの中間フレームを抽出
-    total_success_count = 0
-    for i, slide_info in enumerate(middle_frames):
-        print(f"\n[{i+1}/{len(middle_frames)}] Processing slide {slide_info['slide_no']}")
-        
-        success_count = extract_single_frame_with_ffmpeg(video_file, slide_info, output_dir, fps)
-        total_success_count += success_count
+    # 各スライドの中間フレームをバッチ処理で抽出
+    print("\n=== Starting Batch Frame Extraction ===")
+    total_success_count = extract_frames_in_batches(video_file, middle_frames, output_dir, fps)
     
     print(f"\n=== Extraction Complete ===")
     print(f"Total frames extracted: {total_success_count}/{len(middle_frames)}")
