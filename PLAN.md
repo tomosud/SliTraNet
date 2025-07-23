@@ -77,10 +77,40 @@ k = min(int(diff/(half_clip_length))+1, max_clips)
 3. **処理の安定性向上**: クリップ数制限による予測ノイズの削減
 4. **ログの詳細化**: 信頼度情報の追加により判定過程が可視化
 
+## 追加実装: ROI可視化デバッグ機能 ✅
+**変更場所**: `inference.py:96-168, 267`
+
+**目的**: 実際に処理されるROI領域を視覚的に確認するため
+
+**機能**:
+- 動画の5箇所（開始、1/4、中央、3/4、終了）からサンプルフレームを抽出
+- 各フレームで以下3種類の画像を生成:
+  1. `frame_XX_original_with_roi.png`: 元画像にROI境界（緑枠）を描画
+  2. `frame_XX_roi_cropped_original.png`: 元解像度でROI部分を切り出し
+  3. `frame_XX_roi_cropped_resized.png`: 処理解像度（256×144）でROI部分を切り出し
+
+**技術的課題と解決**:
+- **問題**: OpenCVの`cv2.imwrite()`が日本語パスを処理できない
+- **解決**: `cv2.imencode()` + `numpy.tofile()`による日本語パス対応保存
+
+**使用方法**:
+```python
+# 有効化
+debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, pred_dir)
+
+# 無効化（コメントアウト）
+"""
+debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, pred_dir)
+"""
+```
+
+**出力先**: `{動画名}_results/debug_roi/`
+
 ## テスト推奨事項
 - 従来問題があった動画での分割結果比較
 - Stage別の候補数推移の確認
 - 信頼度スコアの分布確認
+- ROI設定の妥当性確認（デバッグ画像による視覚的検証）
 
 ---
 
