@@ -1,8 +1,8 @@
-# SliTraNet セットアップ・推論実行システム 実装計画
+# SliTraNet ローカル環境セットアップ・推論実行システム
 
 ## プロジェクト概要
 SliTraNetは講義動画のスライド遷移を自動検出するCNNベースのシステムです。
-本実装では、簡単に環境構築から推論実行までを行えるツール群を作成します。
+元のリポジトリをベースに、ローカル環境で簡単に動作するよう改良した推論システムです。
 
 ## システム構成
 
@@ -14,33 +14,26 @@ SliTraNetは講義動画のスライド遷移を自動検出するCNNベース�
 - **依存関係**: requirements.txt（torch, torchvision, opencv-contrib-python-headless, numpy, decord）
 - **コアモジュール**: model.py, data/data_utils.py, backbones/, test_SliTraNet.py
 
-### 2. 作成予定ファイル
+### 2. 実装済みファイル
 
 #### A. setup.bat
-```batch
-@echo off
-echo SliTraNet環境セットアップを開始します...
-python -m venv venv
-call venv\Scripts\activate.bat
-pip install -r requirements.txt
-echo セットアップ完了！
-pause
-```
+- Python仮想環境の作成と有効化
+- 依存関係の自動インストール（requirements.txt）
+- エラーハンドリングと詳細な進行状況表示
+- 使用方法の案内表示
 
 #### B. inference.py
-- 動画ファイルのドラッグ&ドロップ対応
-- 単一動画ファイルの推論実行
-- 元のtest_SliTraNet.pyを簡素化・最適化
-- デフォルト設定でバウンディングボックス不要の自動検出モード
+- 単一動画ファイルからのスライド遷移検出
+- GPU/CPU自動選択（CUDA対応）
+- バウンディングボックス不要の全画面対象推論
+- 3段階のCNN処理（2D CNN → 3D CNN × 2）
+- 詳細なログ出力とエラーハンドリング
 - 結果を動画と同じフォルダに出力
 
 #### C. run_inference.bat
-```batch
-@echo off
-call venv\Scripts\activate.bat
-python inference.py %1
-pause
-```
+- 仮想環境の自動有効化
+- 動画ファイルのドラッグ&ドロップ対応
+- 推論実行とエラー表示
 
 ## 実装方針
 
@@ -65,16 +58,18 @@ pause
 - **エラーハンドリング**: 不正な動画形式やCUDA環境のエラー処理
 - **依存関係**: 既存のmodel.py, data_utils.pyをそのまま利用
 
-## 使用方法（予定）
+## 使用方法
 1. `setup.bat`を実行して環境構築
 2. 動画ファイルを`run_inference.bat`にドラッグ&ドロップ
-3. 推論結果が動画と同じフォルダに出力される
+3. 推論結果が動画と同じフォルダの`{動画名}_results`フォルダに出力される
 
-## 質問・確認事項
-1. 事前学習済みモデルはweights/フォルダに既に存在していますか？
-2. 動画のバウンディングボックス情報は不要で、全画面を対象とした推論で良いですか？
-3. 成果物の出力形式はテキストファイル（遷移フレーム番号）で良いですか？
-4. 特定の動画形式の対応要件はありますか？
+## 実装状況
+- ✅ 環境セットアップスクリプト（setup.bat）
+- ✅ 推論実行スクリプト（inference.py）
+- ✅ 実行用バッチファイル（run_inference.bat）
+- ✅ 全画面対象の自動推論
+- ✅ GPU/CPU自動選択
+- ✅ エラーハンドリングとログ出力
 
 ## リスク・制約
 - CUDA環境が必要（GPUなしでも動作するがCPUのみでは非常に遅い）

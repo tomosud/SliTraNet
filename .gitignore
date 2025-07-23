@@ -1,2 +1,5 @@
 /weights
 /venv
+/__pycache__
+/backbones
+/data/__pycache__

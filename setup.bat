@@ -5,6 +5,10 @@ echo ===========================================
 echo.
 
 echo Creating virtual environment...
+if exist venv (
+    echo Removing existing virtual environment...
+    rmdir /s /q venv
+)
 python -m venv venv
 if errorlevel 1 (
     echo Error: Failed to create virtual environment
@@ -25,9 +29,15 @@ if errorlevel 1 (
 echo.
 echo Installing packages...
 pip install --upgrade pip
+if not exist requirements.txt (
+    echo Error: requirements.txt not found
+    pause
+    exit /b 1
+)
 pip install -r requirements.txt
 if errorlevel 1 (
     echo Error: Failed to install packages
+    echo Please check your internet connection and try again
     pause
     exit /b 1
 )

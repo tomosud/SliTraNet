@@ -1,5 +1,7 @@
-torch
-torchvision
+# PyTorch with CUDA 12.4 support (compatible with CUDA 12.9)
+# For CUDA 12.4+ systems (including 12.9)
+torch --index-url https://download.pytorch.org/whl/cu124
+torchvision --index-url https://download.pytorch.org/whl/cu124
 opencv-contrib-python-headless
 numpy
 decord
