@@ -82,7 +82,9 @@ class VideoClipTestDataset(data.Dataset):
                 clip_list.append(clip_ids)
                 transition_no.append(i)
             else: #gradual or video or uncertain  
-                k = int(diff/(half_clip_length))+1
+                # 最大クリップ数を制限して過剰な分割を防ぐ
+                max_clips = 5
+                k = min(int(diff/(half_clip_length))+1, max_clips)
                 ps = np.linspace(pair[0], pair[1], num=k).astype(np.int32)
                 for p in ps:
                     clip_ids = np.array(range(p-half_clip_length*self.temporal_sampling, p+half_clip_length*self.temporal_sampling, self.temporal_sampling))

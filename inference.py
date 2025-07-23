@@ -13,6 +13,7 @@ import argparse
 import numpy as np
 import subprocess
 import json
+import cv2
 
 import torch
 import torch.nn as nn
@@ -52,8 +53,8 @@ def get_default_config():
             # 2D CNN設定 (Stage 1)
             self.backbone_2D = 'resnet18'
             self.model_path_2D = 'weights/Frame_similarity_ResNet18_gray.pth'
-            self.slide_thresh = 8
-            self.video_thresh = 13
+            self.slide_thresh = 5  # 8 → 5 (より多くの候補を検出)
+            self.video_thresh = 10  # 13 → 10 (より多くの候補を検出)
             self.input_nc = 2
             self.in_gray = True
             
@@ -90,6 +91,94 @@ def get_video_resolution_ffmpeg(video_path):
         frame = vr[0]
         H, W, _ = frame.shape
         return W, H
+
+
+def debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, output_dir):
+    """ROI処理結果を可視化するデバッグ機能"""
+    try:
+        printLog("=== ROI可視化デバッグ開始 ===")
+        
+        # 動画読み込み（元解像度）
+        vr_original = VideoReader(video_path)
+        total_frames = len(vr_original)
+        
+        # 動画読み込み（処理解像度）
+        vr_resized = VideoReader(video_path, width=load_size_roi[1], height=load_size_roi[0])
+        
+        # 5箇所のフレームを選択（開始、1/4、中央、3/4、終了付近）
+        sample_indices = [
+            0,
+            total_frames // 4,
+            total_frames // 2,
+            total_frames * 3 // 4,
+            total_frames - 1
+        ]
+        
+        # デバッグディレクトリ作成
+        debug_dir = os.path.join(output_dir, "debug_roi")
+        os.makedirs(debug_dir, exist_ok=True)
+        printLog(f"デバッグ出力先: {debug_dir}")
+        
+        for i, frame_idx in enumerate(sample_indices):
+            try:
+                # 元解像度フレーム取得
+                original_frame = vr_original[frame_idx].numpy()
+                printLog(f"元フレーム形状: {original_frame.shape}")
+                
+                # 処理解像度フレーム取得
+                resized_frame = vr_resized[frame_idx].numpy()
+                printLog(f"リサイズフレーム形状: {resized_frame.shape}")
+                
+                # 1. 元画像にROI境界を描画
+                roi_boundary_img = original_frame.copy()
+                cv2.rectangle(roi_boundary_img, 
+                             (roi[0], roi[1]), 
+                             (roi[0] + roi[2], roi[1] + roi[3]), 
+                             (0, 255, 0), 3)  # 緑色の枠線
+                
+                # 2. 元画像からROI部分を切り出し
+                roi_cropped = original_frame[roi[1]:roi[1]+roi[3], roi[0]:roi[0]+roi[2]]
+                printLog(f"ROI切り出し形状: {roi_cropped.shape}")
+                
+                # 3. 処理解像度からROI部分を切り出し
+                resized_roi_cropped = resized_frame[scaled_roi[1]:scaled_roi[1]+scaled_roi[3], 
+                                                 scaled_roi[0]:scaled_roi[0]+scaled_roi[2]]
+                printLog(f"リサイズROI切り出し形状: {resized_roi_cropped.shape}")
+                
+                # 画像保存（日本語パス対応）
+                file1 = os.path.join(debug_dir, f"frame_{i+1:02d}_original_with_roi.png")
+                file2 = os.path.join(debug_dir, f"frame_{i+1:02d}_roi_cropped_original.png")
+                file3 = os.path.join(debug_dir, f"frame_{i+1:02d}_roi_cropped_resized.png")
+                
+                # OpenCVの日本語パス問題を回避
+                def save_image_jp(filepath, img):
+                    try:
+                        # cv2.imencode + np.tofile を使用
+                        ext = os.path.splitext(filepath)[1]
+                        result, encoded_img = cv2.imencode(ext, img)
+                        if result:
+                            encoded_img.tofile(filepath)
+                            return True
+                        return False
+                    except:
+                        return False
+                
+                success1 = save_image_jp(file1, cv2.cvtColor(roi_boundary_img, cv2.COLOR_RGB2BGR))
+                success2 = save_image_jp(file2, cv2.cvtColor(roi_cropped, cv2.COLOR_RGB2BGR))
+                success3 = save_image_jp(file3, cv2.cvtColor(resized_roi_cropped, cv2.COLOR_RGB2BGR))
+                
+                printLog(f"保存結果 フレーム{frame_idx} ({i+1}/5): {success1}, {success2}, {success3}")
+                
+            except Exception as frame_error:
+                printLog(f"フレーム{frame_idx}処理エラー: {frame_error}")
+        
+        printLog(f"ROI可視化画像を保存しました: {debug_dir}")
+        printLog("=== ROI可視化デバッグ完了 ===")
+        
+    except Exception as e:
+        printLog(f"ROI可視化エラー: {e}")
+        import traceback
+        printLog(f"トレースバック: {traceback.format_exc()}")
 
 
 def create_roi_from_normalized(video_path, patch_size, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.0)):
@@ -198,6 +287,10 @@ def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.
     
     # decord設定
     decord.bridge.set_bridge('torch')
+    
+    # ===== ROI可視化用デバッグ機能 (一時的) =====
+    # 以下のコメントアウトを外すとROI処理結果を可視化できます
+    debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, pred_dir)
     
     printLog("推論を開始します...")
     
@@ -311,9 +404,15 @@ def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.
             slide_transition_pred = np.hstack(slide_transition_prediction[key])
             slide_video_pred = np.hstack(slide_video_prediction[key])
             
-            # 動画区間と判定されたものは除外
-            if all(slide_transition_pred==3) and all(slide_video_pred==2):
+            # 改善されたフィルタリング条件: 多数決ベース
+            video_confidence = np.mean(slide_video_pred == 2)  # 動画判定の割合
+            transition_confidence = np.mean(slide_transition_pred == 3)  # 動画遷移判定の割合
+            
+            # より緩い条件で動画区間を除外
+            if video_confidence > 0.6 and transition_confidence > 0.6:
                 neg_indices.append(key)
+                printLog(f"除外: フレーム {int(slide_transition_pairs[key][0])+1} -> {int(slide_transition_pairs[key][1])+1}")
+                printLog(f"  動画信頼度: {video_confidence:.2f}, 遷移信頼度: {transition_confidence:.2f}")
             else:
                 transition_count += 1
                 pair = slide_transition_pairs[key]
@@ -324,6 +423,7 @@ def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.
                 printLog(f"遷移 {transition_count}: フレーム {int(pair[0])+1} -> {int(pair[1])+1}")
                 printLog(f"  遷移判定: {slide_transition_pred}")
                 printLog(f"  動画判定: {slide_video_pred}")
+                printLog(f"  動画信頼度: {video_confidence:.2f}, 遷移信頼度: {transition_confidence:.2f}")
         
         printLog(f"\n==== 結果 ====")
         printLog(f"検出されたスライド遷移: {transition_count}件")
