@@ -6,7 +6,8 @@
       "Bash(.venvScriptspython.exe -c \"import numpy; print(''numpy version:'', numpy.__version__)\")",
       "Bash(\"./venv/Scripts/pip.exe\" list)",
       "Bash(nvcc:*)",
-      "Bash(nvidia-smi:*)"
+      "Bash(nvidia-smi:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }

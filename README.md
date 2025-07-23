@@ -1,4 +1,26 @@
 # SliTraNet
+
+## 日本語版改良・ローカル実行対応
+
+このリポジトリは元のSliTraNetをローカル環境で簡単に実行できるように改良したフォーク版です。
+
+### 主な改良点
+- **簡易セットアップ**: setup.batで一発環境構築
+- **ドラッグ&ドロップ実行**: run_inference.batで動画ファイルを簡単実行
+- **ROI指定機能**: 講演動画の演者部分を除外し、スライド部分のみを検出対象に
+- **CUDA自動対応**: GPU/CPU環境を自動判定してモデル読み込み
+- **互換性修正**: 最新PyTorch/numpy環境での動作保証
+
+### 使用方法
+1. `setup.bat`を実行して環境構築
+2. 動画ファイルを`run_inference.bat`にドラッグ&ドロップ
+3. 結果が動画と同じフォルダの`{動画名}_results`に出力
+
+詳細は[PLAN.md](PLAN.md)を参照してください。
+
+---
+
+## Original SliTraNet
 Automatic Detection of Slide Transitions in Lecture Videos using Convolutional Neural Networks
 
 This is the source code to the conference article "SliTraNet: Automatic Detection of Slide Transitions in Lecture Videos using Convolutional Neural Networks" published at OAGM Workshop 2021.
