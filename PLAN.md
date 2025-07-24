@@ -238,6 +238,107 @@ def main():
 
 ---
 
+## フレーム抽出処理の高速化改善案 (2025-07-24) 🚀
+
+### 現在の課題
+- `extract_frames_in_batches()` でffmpegを使ったバッチ処理
+- `batch_size=10` で処理しているが書き出しが遅い
+- ffmpegプロセス起動コストとI/O負荷
+
+### 提案: decordによる直接フレーム抽出
+
+#### 技術的メリット
+1. **プロセス起動コスト削減**: ffmpegプロセス不要
+2. **メモリ効率**: 必要フレームのみをメモリ上で処理
+3. **GPU活用**: decordはGPUデコードに対応
+4. **バッチ処理**: `vr.get_batch([frame1, frame2, ...])` で一括取得
+5. **順序保持**: フレーム番号の順序が自動的に保持される
+
+#### 実装方針
+
+**変更対象**: `extract_frames.py` の `extract_frames_in_batches()` 関数
+
+**新しい処理フロー**:
+```python
+from decord import VideoReader, cpu, gpu
+import cv2
+import numpy as np
+import os
+
+def extract_frames_with_decord(video_path, frame_indices, output_dir, fps):
+    # GPU利用可能時はGPU、そうでなければCPU
+    ctx = gpu(0) if torch.cuda.is_available() else cpu(0)
+    vr = VideoReader(video_path, ctx=ctx)
+    
+    # バッチで一括取得（順序が保持される）
+    frames = vr.get_batch(frame_indices).asnumpy()
+    
+    extracted_files = []
+    for i, frame in enumerate(frames):
+        frame_index = frame_indices[i]
+        
+        # タイムスタンプ計算
+        timestamp = frame_to_timestamp(frame_index, fps)
+        
+        # ファイル名作成（既存形式互換）
+        filename = f"slide_{i+1:03d}_frame_{frame_index:06d}_{timestamp}.png"
+        filepath = os.path.join(output_dir, filename)
+        
+        # RGB→BGR変換してOpenCV形式で保存
+        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(filepath, frame_bgr)
+        
+        extracted_files.append(filepath)
+    
+    return extracted_files
+```
+
+#### 期待される性能向上
+
+**処理速度比較 (推定)**:
+- **現在**: ffmpegプロセス起動 × 10回 (100フレーム時)
+- **改善後**: decord一括処理 × 1回
+- **速度向上**: 3-5倍の高速化期待
+
+**メモリ使用量**:
+- **現在**: ffmpegプロセス × 10 + 一時ファイル
+- **改善後**: VideoReaderインスタンス × 1 + フレームデータ
+- **効率化**: メモリ使用量削減
+
+#### 実装上の注意点
+
+1. **GPU対応**: `torch.cuda.is_available()` でGPU/CPU自動切り替え
+2. **色空間変換**: decord (RGB) → OpenCV (BGR) 変換必須
+3. **エラーハンドリング**: 大量フレーム取得時のメモリ不足対策
+4. **互換性維持**: 既存のファイル名形式・タイムスタンプ形式を保持
+
+#### 段階的実装計画
+
+1. **Phase 1**: 既存ffmpeg関数と並行して新関数実装
+2. **Phase 2**: 小規模テストでパフォーマンス確認
+3. **Phase 3**: 問題なければメイン処理に統合
+4. **Phase 4**: 旧ffmpeg関数を削除
+
+#### コード変更箇所
+
+**主要ファイル**: `extract_frames.py`
+- `extract_frames_in_batches()` → `extract_frames_with_decord()`
+- `get_video_info()` → decord対応版に更新
+- `frame_to_timestamp()` → 既存関数流用
+
+**依存関係**: 既存のdecordを活用（追加インストール不要）
+
+#### 実装準備
+- 現在のrequirements.txtにdecordが含まれていることを確認済み
+- GPUデコード対応でさらなる高速化も期待
+- 既存のSliTraNet処理との互換性を維持
+
+---
+
+**実装指示**: この改善案を基に `extract_frames.py` の高速化を実装してください。
+
+---
+
 ## 現在の構成 (2025-07-24)
 
 ### ファイル構成
