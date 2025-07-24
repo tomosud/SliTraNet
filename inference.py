@@ -93,7 +93,7 @@ def get_video_resolution_ffmpeg(video_path):
         return W, H
 
 
-def debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, output_dir):
+def debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, debug_dir):
     """ROI処理結果を可視化するデバッグ機能"""
     try:
         printLog("=== ROI可視化デバッグ開始 ===")
@@ -115,7 +115,6 @@ def debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, output_dir):
         ]
         
         # デバッグディレクトリ作成
-        debug_dir = os.path.join(output_dir, "debug_roi")
         os.makedirs(debug_dir, exist_ok=True)
         printLog(f"デバッグ出力先: {debug_dir}")
         
@@ -233,12 +232,11 @@ def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.
     # 設定読み込み
     opt = get_default_config()
     
-    # 出力ディレクトリ設定（動画と同じフォルダ）
+    # 出力ディレクトリ設定（動画と同じフォルダに直接出力）
     video_dir = os.path.dirname(video_path)
     video_name = os.path.splitext(os.path.basename(video_path))[0]
     
-    pred_dir = os.path.join(video_dir, f"{video_name}_results")
-    os.makedirs(pred_dir, exist_ok=True)
+    pred_dir = video_dir  # 直接動画と同じフォルダに出力
     
     printLog(f"動画ファイル: {video_path}")
     printLog(f"結果出力先: {pred_dir}")
@@ -290,7 +288,9 @@ def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.
     
     # ===== ROI可視化用デバッグ機能 (一時的) =====
     # 以下のコメントアウトを外すとROI処理結果を可視化できます
-    debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, pred_dir)
+    # デバッグディレクトリは一時的に作成
+    debug_dir = os.path.join(pred_dir, f"{video_name}_debug")
+    debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, debug_dir)
     
     printLog("推論を開始します...")
     
@@ -391,12 +391,8 @@ def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.
         printLog(f"エラー: Stage 3の処理に失敗しました: {e}")
         return False
     
-    # 結果保存
+    # 結果保存（transitions.txtは作成しない）
     try:
-        logfile_path = os.path.join(pred_dir, f"{video_name}_transitions.txt")
-        with open(logfile_path, "w", encoding='utf-8') as f:
-            f.write('Transition No, FrameID0, FrameID1\n')
-        
         transition_count = 0
         neg_indices = []
         
@@ -417,9 +413,6 @@ def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.
                 transition_count += 1
                 pair = slide_transition_pairs[key]
                 
-                with open(logfile_path, "a", encoding='utf-8') as f:
-                    f.write(f"{transition_count}, {int(pair[0])+1}, {int(pair[1])+1}\n")
-                
                 printLog(f"遷移 {transition_count}: フレーム {int(pair[0])+1} -> {int(pair[1])+1}")
                 printLog(f"  遷移判定: {slide_transition_pred}")
                 printLog(f"  動画判定: {slide_video_pred}")
@@ -427,7 +420,6 @@ def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.
         
         printLog(f"\n==== 結果 ====")
         printLog(f"検出されたスライド遷移: {transition_count}件")
-        printLog(f"結果ファイル: {logfile_path}")
         printLog(f"ログファイル: inference.log")
         
         return True

@@ -104,7 +104,33 @@ debug_visualize_roi(video_path, roi, scaled_roi, load_size_roi, pred_dir)
 """
 ```
 
-**出力先**: `{動画名}_results/debug_roi/`
+**出力先**: `{動画名}_debug/` (動画と同じフォルダに直接作成)
+
+## 出力構造の変更 ✅ (2025-07-23 追加)
+**変更場所**: `inference.py:236-241, 394-437` / `run_inference.bat:79-81`
+
+**変更前の出力構造**:
+```
+動画フォルダ/
+  video.mp4
+  video_results/           ← フォルダ作成
+    video_results.txt      ← Stage1詳細結果
+    video_transitions.txt  ← 検出された遷移
+```
+
+**変更後の出力構造**:
+```
+動画フォルダ/
+  video.mp4
+  video_results.txt        ← Stage1詳細結果（直接出力）
+  inference.log           ← 実行ログ
+  video_debug/            ← デバッグ画像用（必要時のみ）
+```
+
+**変更理由と効果**:
+- **ユーザビリティ向上**: 結果ファイルが動画と同じ場所で即座に確認可能
+- **管理の簡素化**: 不要なフォルダ階層を除去
+- **transitions.txt廃止**: 冗長な出力ファイルを削減、必要な情報はログで確認可能
 
 ## フレーム抽出ツール高速バッチ処理実装 ✅
 **変更場所**: `extract_frames.py:全面書き換え` / `extract_frames.bat:表示メッセージ更新`

@@ -77,9 +77,8 @@ if !inference_result! equ 0 (
     echo ===========================================
     echo.
     echo Results saved in the same folder as video:
-    echo   - {video_name}_results/{video_name}_transitions.txt : Detected transitions
-    echo   - {video_name}_results/{video_name}_results.txt    : Stage1 details
-    echo   - inference.log                                    : Execution log
+    echo   - {video_name}_results.txt : Stage1 details
+    echo   - inference.log            : Execution log
     echo.
 ) else (
     echo ===========================================
