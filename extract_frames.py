@@ -11,7 +11,16 @@ import csv
 import subprocess
 import json
 import re
+import numpy as np
+import cv2
 from datetime import datetime, timedelta
+try:
+    from decord import VideoReader, cpu, gpu
+    import torch
+    DECORD_AVAILABLE = True
+except ImportError:
+    DECORD_AVAILABLE = False
+    print("Warning: decord not available, falling back to ffmpeg")
 
 
 def get_video_info(video_file):
@@ -115,8 +124,66 @@ def calculate_middle_frames(frame_data):
     return middle_frames
 
 
-def extract_frames_in_batches(video_file, middle_frames, output_dir, fps, batch_size=20):
-    """batch_size指定個数ずつバッチ処理で高速抽出"""
+def extract_frames_with_decord(video_file, middle_frames, output_dir, fps):
+    """decordを使用した高速フレーム抽出（GPU対応）"""
+    if not DECORD_AVAILABLE:
+        print("decord not available, falling back to ffmpeg...")
+        return extract_frames_in_batches_ffmpeg(video_file, middle_frames, output_dir, fps)
+    
+    try:
+        # GPU利用可能時はGPU、そうでなければCPU
+        ctx = gpu(0) if torch.cuda.is_available() else cpu(0)
+        print(f"Using decord with context: {'GPU' if torch.cuda.is_available() else 'CPU'}")
+        
+        vr = VideoReader(video_file, ctx=ctx)
+        print(f"Video loaded: {len(vr)} frames, {vr.get_avg_fps():.2f} FPS")
+        
+        # フレーム番号リストを準備
+        frame_indices = [info['middle_frame'] for info in middle_frames]
+        
+        print(f"\nExtracting {len(frame_indices)} frames with decord...")
+        
+        # バッチで一括取得（順序が保持される）
+        frames = vr.get_batch(frame_indices).asnumpy()
+        
+        extracted_files = []
+        success_count = 0
+        
+        for i, frame in enumerate(frames):
+            slide_info = middle_frames[i]
+            slide_no = slide_info['slide_no']
+            frame_index = slide_info['middle_frame']
+            
+            # タイムスタンプ計算
+            timestamp = frame_to_timestamp(frame_index, fps)
+            
+            # ファイル名作成（既存形式互換）
+            filename = f"slide_{slide_no:03d}_frame_{frame_index:06d}_{timestamp}.png"
+            filepath = os.path.join(output_dir, filename)
+            
+            try:
+                # RGB→BGR変換してOpenCV形式で保存
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(filepath, frame_bgr)
+                
+                extracted_files.append(filepath)
+                success_count += 1
+                print(f"  ✓ Slide {slide_no}: frame {frame_index} -> {filename}")
+                
+            except Exception as e:
+                print(f"  ✗ Error saving slide {slide_no} frame {frame_index}: {e}")
+        
+        print(f"\ndecord extraction completed: {success_count}/{len(middle_frames)} frames")
+        return success_count
+        
+    except Exception as e:
+        print(f"Error with decord extraction: {e}")
+        print("Falling back to ffmpeg...")
+        return extract_frames_in_batches_ffmpeg(video_file, middle_frames, output_dir, fps)
+
+
+def extract_frames_in_batches_ffmpeg(video_file, middle_frames, output_dir, fps, batch_size=20):
+    """batch_size指定個数ずつバッチ処理で高速抽出（ffmpeg版）"""
     total_success = 0
     total_batches = (len(middle_frames) + batch_size - 1) // batch_size
     
@@ -252,9 +319,14 @@ def main():
     
     print(f"\nOutput directory: {output_dir}")
     
-    # 各スライドの中間フレームをバッチ処理で抽出
-    print("\n=== Starting Batch Frame Extraction ===")
-    total_success_count = extract_frames_in_batches(video_file, middle_frames, output_dir, fps)
+    # 各スライドの中間フレームを抽出（decord優先、フォールバック：ffmpeg）
+    print("\n=== Starting Frame Extraction ===")
+    if DECORD_AVAILABLE:
+        print("Using decord for high-speed extraction...")
+        total_success_count = extract_frames_with_decord(video_file, middle_frames, output_dir, fps)
+    else:
+        print("Using ffmpeg batch processing...")
+        total_success_count = extract_frames_in_batches_ffmpeg(video_file, middle_frames, output_dir, fps)
     
     print(f"\n=== Extraction Complete ===")
     print(f"Total frames extracted: {total_success_count}/{len(middle_frames)}")

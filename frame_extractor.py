@@ -7,11 +7,19 @@ SliTraNetフレーム抽出処理
 import os
 import sys
 import csv
-import subprocess
 import logging
+import numpy as np
+import cv2
 from pathlib import Path
 
 from utils import get_video_info_ffmpeg, frame_to_timestamp, printLog, ensure_directory
+
+try:
+    from decord import VideoReader, cpu, gpu
+    import torch
+    DECORD_AVAILABLE = True
+except ImportError:
+    DECORD_AVAILABLE = False
 
 
 def parse_results_file(results_file):
@@ -78,85 +86,186 @@ def calculate_middle_frames(frame_data):
     return middle_frames
 
 
-def extract_frames_batch(video_file, middle_frames, output_dir, fps, batch_size=10):
-    """バッチ処理でフレームを高速抽出"""
-    logger = logging.getLogger(__name__)
-    total_success = 0
-    total_batches = (len(middle_frames) + batch_size - 1) // batch_size
+def save_image_japanese_path(image, filepath, log_func=printLog):
+    """
+    日本語パス対応の画像保存関数
+    cv2.imwrite()が日本語パスで失敗する問題を解決
+    """
+    try:
+        # 方法1: cv2.imwrite()を直接試行
+        success = cv2.imwrite(filepath, image)
+        if success:
+            return True
+        else:
+            log_func(f"⚠ cv2.imwrite()失敗、代替方法を試行中...")
+    except Exception as e:
+        log_func(f"⚠ cv2.imwrite()例外: {e}, 代替方法を試行中...")
     
-    for batch_idx in range(0, len(middle_frames), batch_size):
-        batch = middle_frames[batch_idx:batch_idx+batch_size]
-        batch_num = batch_idx // batch_size + 1
-        
-        printLog(f"バッチ {batch_num}/{total_batches} 処理中: フレーム {batch_idx+1}-{min(batch_idx+batch_size, len(middle_frames))}")
-        
-        # select式を構築（複数フレーム指定）
-        select_parts = [f"eq(n\\,{info['middle_frame']})" for info in batch]
-        select_expr = '+'.join(select_parts)
-        
-        # 一時ファイルパターン
-        temp_pattern = os.path.join(output_dir, f"batch_{batch_num:03d}_frame_%03d.png")
-        
-        cmd = [
-            'ffmpeg',
-            '-i', video_file,
-            '-vf', f"select='{select_expr}'",
-            '-vsync', '0',  # フレーム番号維持
-            '-y',  # 上書き確認なし
-            temp_pattern
-        ]
-        
+    try:
+        # 方法2: cv2.imencode() + numpy.tofile()
+        success, encoded_img = cv2.imencode('.png', image)
+        if success:
+            encoded_img.tofile(filepath)
+            return True
+        else:
+            log_func(f"✗ cv2.imencode()失敗")
+            return False
+    except Exception as e:
+        log_func(f"✗ 代替保存方法でも失敗: {e}")
+        return False
+
+
+def get_video_info_with_decord(video_path, log_func=printLog):
+    """decordを使用した動画情報取得（test_extract.pyと同じ実装）"""
+    vr = None
+    ctx_type = "Unknown"
+    
+    # まずGPUを試行
+    if torch.cuda.is_available():
         try:
-            # バッチ実行
-            result = subprocess.run(cmd, capture_output=True, text=True, 
-                                  encoding='utf-8', errors='replace')
+            ctx = gpu(0)
+            vr = VideoReader(video_path, ctx=ctx)
+            ctx_type = "GPU"
+            log_func(f"使用デバイス: GPU (成功)")
+        except Exception as gpu_error:
+            log_func(f"GPU初期化失敗: {gpu_error}")
+            log_func("CPUにフォールバック中...")
+            vr = None
+    
+    # GPUが失敗した場合、またはCUDAが利用できない場合はCPUを使用
+    if vr is None:
+        try:
+            ctx = cpu(0)
+            vr = VideoReader(video_path, ctx=ctx)
+            ctx_type = "CPU"
+            log_func(f"使用デバイス: CPU")
+        except Exception as cpu_error:
+            log_func(f"✗ CPU初期化も失敗: {cpu_error}")
+            return None
+    
+    try:
+        total_frames = len(vr)
+        fps = vr.get_avg_fps()
+        duration = total_frames / fps
+        
+        log_func(f"動画情報取得成功:")
+        log_func(f"  総フレーム数: {total_frames:,}")
+        log_func(f"  FPS: {fps:.2f}")
+        log_func(f"  再生時間: {duration:.2f}秒 ({duration/60:.1f}分)")
+        
+        return {
+            'vr': vr,
+            'total_frames': total_frames,
+            'fps': fps,
+            'duration': duration,
+            'device': ctx_type
+        }
+    except Exception as e:
+        log_func(f"✗ 動画情報取得エラー: {e}")
+        return None
+
+
+def extract_frames_with_decord(video_file, middle_frames, output_dir, fps):
+    """decordを使用した高速フレーム抽出（test_extract.pyと同じ実装ベース）"""
+    logger = logging.getLogger(__name__)
+    
+    if not DECORD_AVAILABLE:
+        raise Exception("decordが利用できません。requirements.txtから依存関係をインストールしてください。")
+    
+    # 動画情報取得（test_extract.pyと同じ方法）
+    video_info = get_video_info_with_decord(video_file, printLog)
+    if not video_info:
+        raise Exception("動画情報の取得に失敗しました")
+    
+    vr = video_info['vr']
+    device_type = video_info['device']
+    logger.info(f"Using {device_type} for decord")
+    
+    try:
+        # フレーム番号リストを準備
+        frame_indices = [info['middle_frame'] for info in middle_frames]
+        
+        printLog(f"decordで {len(frame_indices)} フレームを一括抽出中...")
+        
+        # decordで一括フレーム抽出（複数のメソッドを試行）
+        try:
+            frames_tensor = vr.get_batch(frame_indices)
             
-            if result.returncode == 0:
-                # 一時ファイルをタイムスタンプ付きでリネーム
-                batch_success = 0
-                for i, slide_info in enumerate(batch):
-                    temp_file = os.path.join(output_dir, f"batch_{batch_num:03d}_frame_{i+1:03d}.png")
-                    
-                    if os.path.exists(temp_file):
-                        # タイムスタンプ付きファイル名を生成
-                        slide_no = slide_info['slide_no']
-                        middle_frame = slide_info['middle_frame']
-                        timestamp = frame_to_timestamp(middle_frame, fps)
-                        final_filename = f"slide_{slide_no:03d}_frame_{middle_frame:06d}_{timestamp}.png"
-                        final_path = os.path.join(output_dir, final_filename)
-                        
-                        try:
-                            os.rename(temp_file, final_path)
-                            printLog(f"  ✓ Slide {slide_no}: frame {middle_frame} -> {final_filename}")
-                            batch_success += 1
-                        except Exception as e:
-                            printLog(f"  ✗ リネームエラー {temp_file}: {e}")
-                            # 一時ファイルを削除
-                            try:
-                                os.remove(temp_file)
-                            except:
-                                pass
-                    else:
-                        slide_no = slide_info['slide_no']
-                        middle_frame = slide_info['middle_frame']
-                        printLog(f"  ✗ Slide {slide_no}: frame {middle_frame} がバッチ出力で見つかりません")
-                
-                total_success += batch_success
-                printLog(f"  バッチ {batch_num} 完了: {batch_success}/{len(batch)} フレーム抽出")
-                logger.info(f"バッチ {batch_num} 完了: {batch_success}/{len(batch)}")
-                
+            # テンソル変換（複数のメソッドを試行）
+            if hasattr(frames_tensor, 'asnumpy'):
+                frames = frames_tensor.asnumpy()
+                printLog(f"✓ asnumpy()で変換成功")
+            elif hasattr(frames_tensor, 'numpy'):
+                frames = frames_tensor.numpy()
+                printLog(f"✓ numpy()で変換成功")
             else:
-                error_msg = f"バッチ {batch_num} 失敗: {result.stderr}"
+                frames = np.array(frames_tensor)
+                printLog(f"✓ np.array()で変換成功")
+            
+            printLog(f"✓ decord一括取得完了")
+            printLog(f"フレームデータ形状: {frames.shape}")
+            printLog(f"データ型: {frames.dtype}")
+        except Exception as e:
+            printLog(f"✗ decordフレーム取得エラー: {e}")
+            raise Exception(f"decordフレーム取得エラー: {e}")
+        
+        # 画像保存処理
+        extracted_files = []
+        success_count = 0
+        fail_count = 0
+        
+        for i, (frame_index, frame) in enumerate(zip(frame_indices, frames)):
+            slide_info = middle_frames[i]
+            slide_no = slide_info['slide_no']
+            
+            # タイムスタンプ計算
+            timestamp = frame_to_timestamp(frame_index, fps)
+            
+            # ファイル名作成（既存形式互換）
+            filename = f"slide_{slide_no:03d}_frame_{frame_index:06d}_{timestamp}.png"
+            filepath = os.path.join(output_dir, filename)
+            
+            # RGB→BGR変換
+            try:
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            except Exception as e:
+                printLog(f"✗ 色空間変換エラー (slide {slide_no}): {e}")
+                fail_count += 1
+                continue
+            
+            # 日本語パス対応保存
+            if save_image_japanese_path(frame_bgr, filepath):
+                extracted_files.append(filepath)
+                success_count += 1
+                printLog(f"  ✓ Slide {slide_no}: frame {frame_index} -> {filename}")
+            else:
+                fail_count += 1
+                error_msg = f"Slide {slide_no} frame {frame_index} 保存失敗: {filepath}"
                 printLog(f"  ✗ {error_msg}")
                 logger.error(error_msg)
-                
-        except Exception as e:
-            error_msg = f"バッチ {batch_num} 例外: {e}"
-            printLog(f"  ✗ {error_msg}")
-            logger.error(error_msg)
+        
+        # 結果サマリー
+        printLog(f"decord抽出完了: {success_count}/{len(middle_frames)} フレーム")
+        printLog(f"成功率: {success_count/len(middle_frames)*100:.1f}%")
+        logger.info(f"decord extraction completed: {success_count}/{len(middle_frames)} frames, success rate: {success_count/len(middle_frames)*100:.1f}%")
+        
+        return success_count
+        
+    except Exception as e:
+        error_msg = f"decord抽出でエラー: {e}"
+        printLog(f"✗ {error_msg}")
+        logger.error(error_msg)  
+        raise Exception(error_msg)
+
+
+def extract_frames_batch(video_file, middle_frames, output_dir, fps):
+    """decordを使用した高速フレーム抽出"""
+    logger = logging.getLogger(__name__)
     
-    logger.info(f"全バッチ処理完了: {total_success}/{len(middle_frames)} 成功")
-    return total_success
+    printLog("高速抽出のためdecordを使用")
+    logger.info("Using decord for high-speed frame extraction")
+    
+    return extract_frames_with_decord(video_file, middle_frames, output_dir, fps)
 
 
 def extract_slide_frames(results_file, video_file):
@@ -226,8 +335,8 @@ def extract_slide_frames(results_file, video_file):
         printLog(f"出力ディレクトリ: {output_dir}")
         logger.info(f"出力ディレクトリ: {output_dir}")
         
-        # バッチ処理でフレーム抽出
-        printLog("=== バッチフレーム抽出開始 ===")
+        # 高速フレーム抽出（decord）
+        printLog("=== フレーム抽出開始 ===")
         total_success = extract_frames_batch(video_file, middle_frames, output_dir, fps)
         
         printLog("=== フレーム抽出完了 ===")
