@@ -322,111 +322,119 @@ def run_inference(video_path, roi_left_top=(0.0, 0.0), roi_right_bottom=(1.0, 1.
         printLog("スライド遷移候補が見つかりませんでした。")
         return True
     
-    # Stage 2: スライド-動画判定
-    printLog("Stage 2: スライド-動画区間を判定中...")
-    try:
-        full_clip_dataset = VideoClipTestDataset(
-            video_path, load_size_full, slide_transition_pairs, 
-            opt.patch_size, opt.clip_length, opt.temporal_sampling,
-            n_channels=3, transform=BasicTransform(data_shape="CNHW")
-        )
-        full_clip_loader = torch.utils.data.DataLoader(
-            full_clip_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=0
-        )
-        
-        slide_video_prediction = dict()
-        
-        with torch.no_grad():
-            for clips, clip_inds, clip_transition_nums in full_clip_loader:
-                clips = clips.to(device)
-                pred1 = net1(clips)
-                pred_classes, scores = detect_slide_transitions(pred1.squeeze(2).squeeze(2).detach().cpu())
-                
-                transition_nums = torch.unique(clip_transition_nums)
-                for transition_no in transition_nums:
-                    key = transition_no.numpy().tolist()
-                    if key not in slide_video_prediction:
-                        slide_video_prediction[key] = []
-                    slide_video_prediction[key].append(
-                        pred_classes[torch.where(clip_transition_nums==transition_no)[0]].numpy()
-                    )
-        
-        printLog("Stage 2 完了")
-    except Exception as e:
-        printLog(f"エラー: Stage 2の処理に失敗しました: {e}")
-        return False
+    # _results.txt出力完了のため、Stage 1で処理終了
+    printLog(f"Stage 1完了: {predfile} を出力しました")
+    printLog("=== 推論完了 (_results.txtまで) ===")
+    return True
     
-    # Stage 3: スライド遷移検出
-    printLog("Stage 3: スライド遷移を検出中...")
-    try:
-        clip_dataset = VideoClipTestDataset(
-            video_path, load_size_roi, slide_transition_pairs,
-            opt.patch_size, opt.clip_length, opt.temporal_sampling,
-            n_channels=3, transform=BasicTransform(data_shape="CNHW"),
-            roi=scaled_roi
-        )
-        clip_loader = torch.utils.data.DataLoader(
-            clip_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=0
-        )
-        
-        slide_transition_prediction = dict()
-        
-        with torch.no_grad():
-            for clips, clip_inds, clip_transition_nums in clip_loader:
-                clips = clips.to(device)
-                pred2 = net2(clips)
-                pred_classes, scores = detect_slide_transitions(pred2.squeeze(2).squeeze(2).detach().cpu())
-                
-                transition_nums = torch.unique(clip_transition_nums)
-                for transition_no in transition_nums:
-                    key = transition_no.numpy().tolist()
-                    if key not in slide_transition_prediction:
-                        slide_transition_prediction[key] = []
-                    slide_transition_prediction[key].append(
-                        pred_classes[torch.where(clip_transition_nums==transition_no)[0]].numpy()
-                    )
-        
-        printLog("Stage 3 完了")
-    except Exception as e:
-        printLog(f"エラー: Stage 3の処理に失敗しました: {e}")
-        return False
+    # ===== 以下はStage 2・3の処理（_results.txt出力後の追加処理） =====
+    # 必要に応じてコメントアウトを外してください
     
-    # 結果保存（transitions.txtは作成しない）
-    try:
-        transition_count = 0
-        neg_indices = []
-        
-        for key in slide_transition_prediction.keys():
-            slide_transition_pred = np.hstack(slide_transition_prediction[key])
-            slide_video_pred = np.hstack(slide_video_prediction[key])
-            
-            # 改善されたフィルタリング条件: 多数決ベース
-            video_confidence = np.mean(slide_video_pred == 2)  # 動画判定の割合
-            transition_confidence = np.mean(slide_transition_pred == 3)  # 動画遷移判定の割合
-            
-            # より緩い条件で動画区間を除外
-            if video_confidence > 0.6 and transition_confidence > 0.6:
-                neg_indices.append(key)
-                printLog(f"除外: フレーム {int(slide_transition_pairs[key][0])+1} -> {int(slide_transition_pairs[key][1])+1}")
-                printLog(f"  動画信頼度: {video_confidence:.2f}, 遷移信頼度: {transition_confidence:.2f}")
-            else:
-                transition_count += 1
-                pair = slide_transition_pairs[key]
-                
-                printLog(f"遷移 {transition_count}: フレーム {int(pair[0])+1} -> {int(pair[1])+1}")
-                printLog(f"  遷移判定: {slide_transition_pred}")
-                printLog(f"  動画判定: {slide_video_pred}")
-                printLog(f"  動画信頼度: {video_confidence:.2f}, 遷移信頼度: {transition_confidence:.2f}")
-        
-        printLog(f"\n==== 結果 ====")
-        printLog(f"検出されたスライド遷移: {transition_count}件")
-        printLog(f"ログファイル: inference.log")
-        
-        return True
-        
-    except Exception as e:
-        printLog(f"エラー: 結果保存に失敗しました: {e}")
-        return False
+    # # Stage 2: スライド-動画判定
+    # printLog("Stage 2: スライド-動画区間を判定中...")
+    # try:
+    #     full_clip_dataset = VideoClipTestDataset(
+    #         video_path, load_size_full, slide_transition_pairs, 
+    #         opt.patch_size, opt.clip_length, opt.temporal_sampling,
+    #         n_channels=3, transform=BasicTransform(data_shape="CNHW")
+    #     )
+    #     full_clip_loader = torch.utils.data.DataLoader(
+    #         full_clip_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=0
+    #     )
+    #     
+    #     slide_video_prediction = dict()
+    #     
+    #     with torch.no_grad():
+    #         for clips, clip_inds, clip_transition_nums in full_clip_loader:
+    #             clips = clips.to(device)
+    #             pred1 = net1(clips)
+    #             pred_classes, scores = detect_slide_transitions(pred1.squeeze(2).squeeze(2).detach().cpu())
+    #             
+    #             transition_nums = torch.unique(clip_transition_nums)
+    #             for transition_no in transition_nums:
+    #                 key = transition_no.numpy().tolist()
+    #                 if key not in slide_video_prediction:
+    #                     slide_video_prediction[key] = []
+    #                 slide_video_prediction[key].append(
+    #                     pred_classes[torch.where(clip_transition_nums==transition_no)[0]].numpy()
+    #                 )
+    #     
+    #     printLog("Stage 2 完了")
+    # except Exception as e:
+    #     printLog(f"エラー: Stage 2の処理に失敗しました: {e}")
+    #     return False
+    
+    # # Stage 3: スライド遷移検出
+    # printLog("Stage 3: スライド遷移を検出中...")
+    # try:
+    #     clip_dataset = VideoClipTestDataset(
+    #         video_path, load_size_roi, slide_transition_pairs,
+    #         opt.patch_size, opt.clip_length, opt.temporal_sampling,
+    #         n_channels=3, transform=BasicTransform(data_shape="CNHW"),
+    #         roi=scaled_roi
+    #     )
+    #     clip_loader = torch.utils.data.DataLoader(
+    #         clip_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=0
+    #     )
+    #     
+    #     slide_transition_prediction = dict()
+    #     
+    #     with torch.no_grad():
+    #         for clips, clip_inds, clip_transition_nums in clip_loader:
+    #             clips = clips.to(device)
+    #             pred2 = net2(clips)
+    #             pred_classes, scores = detect_slide_transitions(pred2.squeeze(2).squeeze(2).detach().cpu())
+    #             
+    #             transition_nums = torch.unique(clip_transition_nums)
+    #             for transition_no in transition_nums:
+    #                 key = transition_no.numpy().tolist()
+    #                 if key not in slide_transition_prediction:
+    #                     slide_transition_prediction[key] = []
+    #                 slide_transition_prediction[key].append(
+    #                     pred_classes[torch.where(clip_transition_nums==transition_no)[0]].numpy()
+    #                 )
+    #     
+    #     printLog("Stage 3 完了")
+    # except Exception as e:
+    #     printLog(f"エラー: Stage 3の処理に失敗しました: {e}")
+    #     return False
+    # 
+    # # 結果保存（transitions.txtは作成しない）
+    # try:
+    #     transition_count = 0
+    #     neg_indices = []
+    #     
+    #     for key in slide_transition_prediction.keys():
+    #         slide_transition_pred = np.hstack(slide_transition_prediction[key])
+    #         slide_video_pred = np.hstack(slide_video_prediction[key])
+    #         
+    #         # 改善されたフィルタリング条件: 多数決ベース
+    #         video_confidence = np.mean(slide_video_pred == 2)  # 動画判定の割合
+    #         transition_confidence = np.mean(slide_transition_pred == 3)  # 動画遷移判定の割合
+    #         
+    #         # より緩い条件で動画区間を除外
+    #         if video_confidence > 0.6 and transition_confidence > 0.6:
+    #             neg_indices.append(key)
+    #             printLog(f"除外: フレーム {int(slide_transition_pairs[key][0])+1} -> {int(slide_transition_pairs[key][1])+1}")
+    #             printLog(f"  動画信頼度: {video_confidence:.2f}, 遷移信頼度: {transition_confidence:.2f}")
+    #         else:
+    #             transition_count += 1
+    #             pair = slide_transition_pairs[key]
+    #             
+    #             printLog(f"遷移 {transition_count}: フレーム {int(pair[0])+1} -> {int(pair[1])+1}")
+    #             printLog(f"  遷移判定: {slide_transition_pred}")
+    #             printLog(f"  動画判定: {slide_video_pred}")
+    #             printLog(f"  動画信頼度: {video_confidence:.2f}, 遷移信頼度: {transition_confidence:.2f}")
+    #     
+    #     printLog(f"\n==== 結果 ====")
+    #     printLog(f"検出されたスライド遷移: {transition_count}件")
+    #     printLog(f"ログファイル: inference.log")
+    #     
+    #     return True
+    #     
+    # except Exception as e:
+    #     printLog(f"エラー: 結果保存に失敗しました: {e}")
+    #     return False
 
 
 def main():

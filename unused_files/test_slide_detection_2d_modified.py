@@ -175,4 +175,4 @@ if __name__ == '__main__':
 
     opt = parser.parse_args()  
 
-    pass   
+    test_resnet2d(opt)   
