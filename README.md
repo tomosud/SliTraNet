@@ -1,22 +1,167 @@
 # SliTraNet
 
-## 日本語版改良・ローカル実行対応
+## 統合版・ローカル実行対応
 
-このリポジトリは元のSliTraNetをローカル環境で簡単に実行できるように改良したフォーク版です。
+このリポジトリは元のSliTraNetをローカル環境で簡単に実行できるように改良した統合版です。
+動画ファイルから自動でスライド遷移検出とフレーム抽出を一貫して実行します。
 
 ### 主な改良点
+- **統合処理**: 推論→フレーム抽出を自動実行
 - **簡易セットアップ**: setup.batで一発環境構築
-- **ドラッグ&ドロップ実行**: run_inference.batで動画ファイルを簡単実行
+- **ドラッグ&ドロップ実行**: run.batで動画から画像まで自動処理
 - **ROI指定機能**: 講演動画の演者部分を除外し、スライド部分のみを検出対象に
 - **CUDA自動対応**: GPU/CPU環境を自動判定してモデル読み込み
-- **互換性修正**: 最新PyTorch/numpy環境での動作保証
+- **400行制限**: 全Pythonファイルを400行以内でモジュラー設計
+- **外部引数対応**: ROI座標の動的設定が可能
 
-### 使用方法
+## 使用方法
+
+### 基本使用（推奨）
 1. `setup.bat`を実行して環境構築
-2. 動画ファイルを`run_inference.bat`にドラッグ&ドロップ
-3. 結果が動画と同じフォルダの`{動画名}_results`に出力
+2. 動画ファイルを`run.bat`にドラッグ&ドロップ
+3. 自動で推論→フレーム抽出が実行される
 
-詳細は[PLAN.md](PLAN.md)を参照してください。
+### コマンドライン使用
+```bash
+# 基本実行
+run.bat "video.mp4"
+
+# または直接Python実行
+python main.py "video.mp4"
+
+# ROI座標を指定
+python main.py "video.mp4" --roi-left-top 0.2 0.1 --roi-right-bottom 0.9 0.8
+
+# デバッグモード（ROI可視化）
+python main.py "video.mp4" --debug
+```
+
+### 出力結果
+```
+動画フォルダ/
+├── video.mp4
+├── video_results.txt        # スライド遷移検出結果
+├── extracted_frames/        # 抽出フレーム画像
+│   ├── slide_001_frame_000175_00h05m51.234s.png
+│   └── slide_002_frame_000400_00h13m20.123s.png
+├── inference.log           # 実行ログ
+└── video_debug/            # ROI可視化画像（--debugオプション時）
+```
+
+## コーディングルール
+
+### 全般
+- **行数制限**: 全Pythonファイルは400行以内
+- **文字エンコーディング**: UTF-8
+- **エラーハンドリング**: 例外は適切にキャッチしてログ出力
+- **依存関係**: モジュール間の循環参照禁止
+
+### ファイル構成
+- **main.py**: 統合エントリポイント（引数解析、フロー制御）
+- **inference_core.py**: スライド遷移検出のコア処理
+- **frame_extractor.py**: フレーム抽出処理
+- **utils.py**: 共通ユーティリティ関数
+
+### 命名規則
+- **関数名**: snake_case（例：`run_slide_detection`）
+- **変数名**: snake_case（例：`video_path`）
+- **定数名**: UPPER_CASE（例：`DEFAULT_ROI`）
+- **クラス名**: PascalCase（例：`DefaultConfig`）
+
+### ログ出力
+```python
+import logging
+logger = logging.getLogger(__name__)
+
+# 情報ログ
+logger.info("処理開始")
+
+# エラーログ
+logger.error("エラー内容", exc_info=True)
+
+# 後方互換性のため printLog() も使用可能
+printLog("ログメッセージ")
+```
+
+### エラーハンドリング
+```python
+try:
+    # 処理内容
+    result = process_video(video_path)
+    return True, result
+except Exception as e:
+    logger.error(f"処理失敗: {e}", exc_info=True)
+    return False, None
+```
+
+### ファイル操作
+```python
+# パス操作
+import os
+from pathlib import Path
+
+# 絶対パス使用
+video_path = os.path.abspath(args.video_file)
+
+# ディレクトリ作成
+os.makedirs(output_dir, exist_ok=True)
+
+# ファイル存在確認
+if not os.path.exists(file_path):
+    return False, f"File not found: {file_path}"
+```
+
+### 引数処理
+```python
+def setup_argument_parser():
+    parser = argparse.ArgumentParser(
+        description='明確な説明',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument('video_file', help='動画ファイルのパス')
+    return parser
+```
+
+### 戻り値の統一
+```python
+# 成功・失敗の統一形式
+def process_function():
+    try:
+        # 処理
+        return True, result_data
+    except Exception as e:
+        logger.error(f"処理失敗: {e}")
+        return False, None
+
+# 使用例
+success, data = process_function()
+if not success:
+    return False, "処理に失敗しました"
+```
+
+## 開発・追加実装時の注意
+
+### 機能追加時
+1. 400行制限を遵守
+2. 既存のログシステムを使用
+3. エラーハンドリングの統一形式を維持
+4. 引数の妥当性検証を実装
+
+### テスト実行
+```bash
+# 統合動作テスト
+python main.py "test_video.mp4" --debug
+
+# 依存関係チェック
+python -c "from utils import check_dependencies; print(check_dependencies())"
+```
+
+### トラブルシューティング
+- ログファイル: `inference.log`
+- GPU使用不可の場合はCPU実行（警告表示）
+- ffmpeg未インストールの場合はエラー停止
+
+詳細な改良履歴は[PLAN.md](PLAN.md)を参照してください。
 
 ---
 
