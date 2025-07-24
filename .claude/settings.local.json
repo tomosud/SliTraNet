@@ -12,7 +12,10 @@
       "Bash(mkdir:*)",
       "Bash(move test_SliTraNet.py unused_files/)",
       "Bash(mv:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(venvScripts:*)",
+      "Bash(call venvScriptsactivate.bat)",
+      "Bash(powershell:*)"
     ],
     "deny": []
   }

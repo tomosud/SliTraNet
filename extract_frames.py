@@ -115,8 +115,8 @@ def calculate_middle_frames(frame_data):
     return middle_frames
 
 
-def extract_frames_in_batches(video_file, middle_frames, output_dir, fps, batch_size=10):
-    """10個ずつバッチ処理で高速抽出"""
+def extract_frames_in_batches(video_file, middle_frames, output_dir, fps, batch_size=20):
+    """batch_size指定個数ずつバッチ処理で高速抽出"""
     total_success = 0
     total_batches = (len(middle_frames) + batch_size - 1) // batch_size
     

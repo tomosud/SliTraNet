@@ -15,6 +15,7 @@ from pathlib import Path
 from utils import setup_logging, validate_video_file, validate_roi_coordinates
 from inference_core import run_slide_detection
 from frame_extractor import extract_slide_frames
+from image_similarity import run_duplicate_removal
 
 
 def setup_argument_parser():
@@ -83,7 +84,7 @@ def print_processing_summary(video_file, roi_left_top, roi_right_bottom):
     print("=" * 60)
     print(f"入力動画: {video_file}")
     print(f"ROI設定: 左上{roi_left_top} 右下{roi_right_bottom}")
-    print(f"処理手順: 1.スライド遷移検出 → 2.フレーム抽出")
+    print(f"処理手順: 1.スライド遷移検出 → 2.フレーム抽出 → 3.重複画像除去")
     print("=" * 60)
 
 
@@ -98,6 +99,19 @@ def print_completion_summary(success, video_file, results_file, extracted_frames
         if total_frames > 0:
             print(f"抽出フレーム: {total_frames}枚")
             print(f"出力フォルダ: {extracted_frames_dir}")
+            
+            # 重複除去関連の出力情報
+            video_dir = os.path.dirname(video_file)
+            similarity_groups_file = os.path.join(video_dir, "similarity_groups.txt")
+            dupp_dir = os.path.join(extracted_frames_dir, "dupp")
+            
+            if os.path.exists(similarity_groups_file):
+                print(f"重複検出結果: {similarity_groups_file}")
+            if os.path.exists(dupp_dir):
+                dupp_count = len([f for f in os.listdir(dupp_dir) if f.lower().endswith('.png')])
+                if dupp_count > 0:
+                    print(f"重複画像({dupp_count}枚): {dupp_dir}")
+        
         print("ログファイル: inference.log")
     else:
         print("✗ 統合処理中にエラーが発生しました")
@@ -164,7 +178,7 @@ def main():
             sys.exit(1)
         
         # ステップ2: フレーム抽出
-        print("\n[ステップ2/2] フレーム抽出を実行中...")
+        print("\n[ステップ2/3] フレーム抽出を実行中...")
         logger.info("Step 2: フレーム抽出開始")
         
         extraction_success, extracted_frames_dir, total_frames = extract_slide_frames(
@@ -180,6 +194,21 @@ def main():
         
         print(f"✓ フレーム抽出完了: {total_frames}枚抽出")
         logger.info(f"Step 2完了: {total_frames}枚抽出 -> {extracted_frames_dir}")
+        
+        # ステップ3: 重複画像除去
+        print("\n[ステップ3/3] 重複画像除去を実行中...")
+        logger.info("Step 3: 重複画像除去開始")
+        
+        try:
+            # 重複画像除去を実行（デフォルト閾値85%）
+            run_duplicate_removal(extracted_frames_dir, threshold=0.85)
+            print("✓ 重複画像除去完了")
+            logger.info("Step 3完了: 重複画像除去")
+        except Exception as e:
+            # 重複除去のエラーは警告扱い（処理は続行）
+            error_msg = f"重複画像除去で警告: {e}"
+            print(f"警告: {error_msg}")
+            logger.warning(error_msg)
         
         # 中間ファイルのクリーンアップ（オプション）
         if not keep_results:

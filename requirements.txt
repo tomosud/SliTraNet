@@ -2,6 +2,17 @@
 # For CUDA 12.4+ systems (including 12.9)
 torch --index-url https://download.pytorch.org/whl/cu124
 torchvision --index-url https://download.pytorch.org/whl/cu124
-opencv-contrib-python-headless
+
+# OpenCV (contrib version for unified SliTraNet + image_dupp support)
+opencv-contrib-python
+
+# Common libraries
 numpy
+
+# SliTraNet specific
 decord
+
+# image_dupp integration
+imagededup
+Pillow
+tqdm
