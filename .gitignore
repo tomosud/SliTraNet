@@ -1,7 +1,10 @@
-/weights
 /venv
 /__pycache__
 /data/__pycache__
 /backbones/__pycache__
 inference.log
 
+weights/Frame_similarity_ResNet18_gray.pth
+weights/Frame_similarity_ResNet18_RGB.pth
+weights/Slide_transition_detection_3DResNet50.pth
+weights/Slide_video_detection_3DResNet50.pth
