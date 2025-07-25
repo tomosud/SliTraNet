@@ -8,3 +8,4 @@ weights/Frame_similarity_ResNet18_gray.pth
 weights/Frame_similarity_ResNet18_RGB.pth
 weights/Slide_transition_detection_3DResNet50.pth
 weights/Slide_video_detection_3DResNet50.pth
+/unused_files/__pycache__

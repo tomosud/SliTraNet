@@ -15,7 +15,7 @@ import decord
 from decord import VideoReader
 
 from model import define_resnet2d, ResNet3d, loadNetwork
-from test_slide_detection_2d import detect_initial_slide_transition_candidates_resnet2d
+from slide_detection_2d import detect_initial_slide_transition_candidates_resnet2d
 from data.data_utils import read_pred_slide_ids_from_file, extract_slide_transitions
 from utils import printLog, get_video_info_ffmpeg
 

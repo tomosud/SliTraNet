@@ -15,7 +15,16 @@
       "Bash(git checkout:*)",
       "Bash(venvScripts:*)",
       "Bash(call venvScriptsactivate.bat)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(move extract_frames.py unused_files )",
+      "Bash(move extract_frames.bat unused_files )",
+      "Bash(move inference.py unused_files )",
+      "Bash(move run_inference.bat unused_files )",
+      "Bash(move test_slide_detection_2d.py unused_files )",
+      "Bash(move test_extract.py unused_files )",
+      "Bash(move:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

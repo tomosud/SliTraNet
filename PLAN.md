@@ -168,3 +168,21 @@ def save_image_japanese_path(image, filepath):
 - GUI化の検討
 - バッチ処理対応
 - 設定ファイル対応
+
+## プロジェクト構造リファクタリング (2025-07-25)
+
+### 実施内容 ✅
+- 旧ファイル7個を削除（統合済み・開発完了）
+- `slide_detection_2d.py`をルートに復帰（Stage 1検出の中核機能）
+- README.md簡素化（291行→109行）
+
+### 最終構造
+```
+SliTraNet/
+├── main.py/run.bat        # メインエントリ
+├── inference_core.py      # 検出コア
+├── slide_detection_2d.py  # Stage 1検出
+├── frame_extractor.py     # フレーム抽出
+├── image_similarity.py    # 重複除去
+└── model.py/utils.py      # 共通機能
+```
